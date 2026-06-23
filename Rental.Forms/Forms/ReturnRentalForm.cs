@@ -3,81 +3,74 @@ using Rental.Data.Constants;
 using Rental.Data.Context;
 using Rental.Data.Helpers;
 using Rental.Data.Models;
+using Rental.Forms.Ui;
 
 namespace Rental.Forms.Forms;
 
-public class ReturnRentalForm : Form
+public class ReturnRentalForm : ShellForm
 {
     private readonly AppDbContext _db = new();
-    private readonly ComboBox _cmbRental = new() { Width = 380, DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly Label _lblCost = new() { AutoSize = true };
-    private readonly Label _lblFine = new() { AutoSize = true };
-    private readonly Label _lblTotal = new() { AutoSize = true };
-    private readonly DateTimePicker _dtpReturn = new() { Width = 200, Format = DateTimePickerFormat.Custom, CustomFormat = "dd.MM.yyyy HH:mm" };
+    private readonly ComboBox _cmbRental = new() { Width = 420, DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly Label _lblCost = new() { AutoSize = true, ForeColor = UiTheme.TextPrimary };
+    private readonly Label _lblFine = new() { AutoSize = true, ForeColor = UiTheme.TextPrimary };
+    private readonly Label _lblTotal = new() { AutoSize = true, Font = new Font("Segoe UI", 11F, FontStyle.Bold), ForeColor = UiTheme.Accent };
+    private readonly DateTimePicker _dtpReturn = new() { Width = 220, Format = DateTimePickerFormat.Custom, CustomFormat = "dd.MM.yyyy HH:mm" };
 
     public ReturnRentalForm()
     {
-        Text = "Возврат инвентаря";
-        Width = 520;
-        Height = 320;
-        StartPosition = FormStartPosition.CenterScreen;
-        FormBorderStyle = FormBorderStyle.FixedDialog;
-        MaximizeBox = false;
+        SetActiveNavKey("return");
+        NavigationService.NavigateTo(this, "return");
+
+        var header = new PageHeaderControl();
+        header.SetTitle("Возврат инвентаря", "Расчёт стоимости и штрафа");
+        header.ConfigureAction("", false);
+        header.HideSearch();
 
         _dtpReturn.Value = DateTime.Now;
         _cmbRental.SelectedIndexChanged += (_, _) => UpdatePreview();
         _dtpReturn.ValueChanged += (_, _) => UpdatePreview();
 
-        _lblTotal.Font = new Font(Font, FontStyle.Bold);
-
-        BuildLayout();
-        LoadRentals();
-        FormClosed += (_, _) => _db.Dispose();
-    }
-
-    private void BuildLayout()
-    {
-        var table = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 2 };
+        var card = new RoundedPanel { Dock = DockStyle.Top, Height = 260, Padding = new Padding(24) };
+        var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
         AddRow(table, 0, "Активная аренда:", _cmbRental);
         AddRow(table, 1, "Дата возврата:", _dtpReturn);
-        AddRow(table, 2, "Стоимость аренды:", _lblCost);
+        AddRow(table, 2, "Стоимость:", _lblCost);
         AddRow(table, 3, "Штраф:", _lblFine);
-        AddRow(table, 4, "Итого к оплате:", _lblTotal);
+        AddRow(table, 4, "Итого:", _lblTotal);
+        card.Controls.Add(table);
 
-        var btnReturn = new Button { Text = "Принять возврат", Width = 140 };
-        var btnClose = new Button { Text = "Закрыть", DialogResult = DialogResult.Cancel, Width = 100 };
+        var btnReturn = new Button { Text = "Принять возврат", Width = 160 };
+        UiTheme.StylePrimaryButton(btnReturn);
         btnReturn.Click += (_, _) => ProcessReturn();
 
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 48, Padding = new Padding(8) };
-        buttons.Controls.Add(btnClose);
-        buttons.Controls.Add(btnReturn);
+        var actions = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 48 };
+        actions.Controls.Add(btnReturn);
 
-        Controls.Add(table);
-        Controls.Add(buttons);
+        ContentPanel.Controls.Add(actions);
+        ContentPanel.Controls.Add(card);
+        ContentPanel.Controls.Add(header);
+
+        Load += (_, _) => LoadRentals();
+        FormClosed += (_, _) => _db.Dispose();
     }
 
     private static void AddRow(TableLayoutPanel table, int row, string label, Control control)
     {
-        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+        table.Controls.Add(new Label { Text = label, AutoSize = true, ForeColor = UiTheme.TextSecondary }, 0, row);
         table.Controls.Add(control, 1, row);
     }
 
     private void LoadRentals()
     {
         var rentals = _db.RentalRecords
-            .Include(r => r.Inventory)
-            .Include(r => r.Client)
+            .Include(r => r.Inventory).Include(r => r.Client)
             .Where(r => r.Status == RentalRecordStatuses.Active || r.Status == RentalRecordStatuses.Overdue)
-            .OrderBy(r => r.PlannedReturnDate)
-            .ToList();
+            .OrderBy(r => r.PlannedReturnDate).ToList();
 
-        _cmbRental.DisplayMember = "DisplayText";
-        _cmbRental.ValueMember = "Id";
         _cmbRental.DataSource = rentals.Select(r => new RentalListItem(r)).ToList();
-
+        _cmbRental.DisplayMember = "DisplayText";
         if (rentals.Count == 0)
-            MessageBox.Show("Нет активных аренд для возврата.", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Information);
-
+            MessageBox.Show("Нет активных аренд.", "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Information);
         UpdatePreview();
     }
 
@@ -88,21 +81,12 @@ public class ReturnRentalForm : Form
             _lblCost.Text = _lblFine.Text = _lblTotal.Text = "—";
             return;
         }
-
-        var rental = item.Record;
-        var cost = RentalCalculator.CalculateRentalCost(
-            rental.IssueDate,
-            _dtpReturn.Value,
-            rental.Inventory.PricePerHour,
-            rental.Inventory.PricePerDay,
-            rental.Tariff);
-
-        var fine = RentalCalculator.CalculateFine(rental.PlannedReturnDate, _dtpReturn.Value, cost);
-        var total = RentalCalculator.CalculateReturnTotal(cost, fine);
-
-        _lblCost.Text = $"{cost:N2} руб.";
-        _lblFine.Text = $"{fine:N2} руб.";
-        _lblTotal.Text = $"{total:N2} руб.";
+        var r = item.Record;
+        var cost = RentalCalculator.CalculateRentalCost(r.IssueDate, _dtpReturn.Value, r.Inventory.PricePerHour, r.Inventory.PricePerDay, r.Tariff);
+        var fine = RentalCalculator.CalculateFine(r.PlannedReturnDate, _dtpReturn.Value, cost);
+        _lblCost.Text = $"{cost:N2} ₽";
+        _lblFine.Text = $"{fine:N2} ₽";
+        _lblTotal.Text = $"{RentalCalculator.CalculateReturnTotal(cost, fine):N2} ₽";
     }
 
     private void ProcessReturn()
@@ -112,61 +96,29 @@ public class ReturnRentalForm : Form
             if (_cmbRental.SelectedItem is not RentalListItem item)
                 throw new ArgumentException("Выберите аренду");
 
-            var rental = _db.RentalRecords
-                .Include(r => r.Inventory)
-                .FirstOrDefault(r => r.Id == item.Record.Id)
-                ?? throw new ArgumentException("Аренда не найдена");
-
-            if (rental.Status == RentalRecordStatuses.Completed)
-                throw new InvalidOperationException("Аренда уже завершена");
-
+            var rental = _db.RentalRecords.Include(r => r.Inventory).First(r => r.Id == item.Record.Id);
             var returnDate = _dtpReturn.Value;
-            if (returnDate < rental.IssueDate)
-                throw new ArgumentException("Дата возврата не может быть раньше даты выдачи");
-
-            var cost = RentalCalculator.CalculateRentalCost(
-                rental.IssueDate,
-                returnDate,
-                rental.Inventory.PricePerHour,
-                rental.Inventory.PricePerDay,
-                rental.Tariff);
+            var cost = RentalCalculator.CalculateRentalCost(rental.IssueDate, returnDate, rental.Inventory.PricePerHour, rental.Inventory.PricePerDay, rental.Tariff);
 
             rental.Fine = RentalCalculator.CalculateFine(rental.PlannedReturnDate, returnDate, cost);
             rental.TotalAmount = cost;
             rental.ActualReturnDate = returnDate;
             rental.Status = RentalRecordStatuses.Completed;
             rental.Inventory.Status = InventoryStatuses.Available;
-
             _db.SaveChanges();
 
-            MessageBox.Show(
-                $"Возврат оформлен.\nСтоимость: {cost:N2} руб.\nШтраф: {rental.Fine:N2} руб.\nИтого: {RentalCalculator.CalculateReturnTotal(cost, rental.Fine):N2} руб.",
-                "Успешно",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-
+            MessageBox.Show("Возврат оформлен.", "Успешно", MessageBoxButtons.OK, MessageBoxIcon.Information);
             LoadRentals();
         }
         catch (ArgumentException ex)
         {
-            MessageBox.Show(ex.Message, "Ошибка ввода", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        catch (InvalidOperationException ex)
-        {
-            MessageBox.Show(ex.Message, "Недопустимая операция", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show("Системная ошибка: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
-    private sealed class RentalListItem
+    private sealed class RentalListItem(RentalRecord record)
     {
-        public RentalRecord Record { get; }
-        public int Id => Record.Id;
-        public string DisplayText => $"№{Record.Id}: {Record.Inventory.Name} — {Record.Client.LastName} {Record.Client.FirstName} (до {Record.PlannedReturnDate:dd.MM.yyyy HH:mm})";
-
-        public RentalListItem(RentalRecord record) => Record = record;
+        public RentalRecord Record { get; } = record;
+        public string DisplayText => $"№{Record.Id}: {Record.Inventory.Name} — {Record.Client.FullName}";
     }
 }

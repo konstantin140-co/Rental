@@ -1,5 +1,6 @@
 using Rental.Data.Context;
 using Rental.Data.Models;
+using Rental.Forms.Ui;
 
 namespace Rental.Forms.Forms;
 
@@ -20,20 +21,29 @@ public class ClientEditForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(420, 260);
+        ClientSize = new Size(440, 300);
+        BackColor = UiTheme.Background;
+        Font = UiTheme.BodyFont;
 
-        var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(12) };
-        table.Controls.Add(new Label { Text = "Фамилия:", AutoSize = true }, 0, 0);
-        table.Controls.Add(_txtLastName, 1, 0);
-        table.Controls.Add(new Label { Text = "Имя:", AutoSize = true }, 0, 1);
-        table.Controls.Add(_txtFirstName, 1, 1);
-        table.Controls.Add(new Label { Text = "Паспорт:", AutoSize = true }, 0, 2);
-        table.Controls.Add(_txtPassport, 1, 2);
-        table.Controls.Add(new Label { Text = "Телефон:", AutoSize = true }, 0, 3);
-        table.Controls.Add(_txtPhone, 1, 3);
+        var table = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(16) };
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        void AddRow(int row, string label, TextBox textBox)
+        {
+            table.Controls.Add(new Label { Text = label, AutoSize = true, ForeColor = UiTheme.TextSecondary, Font = UiTheme.BodyFont }, 0, row);
+            table.Controls.Add(UiTheme.WrapInput(textBox), 1, row);
+        }
+
+        AddRow(0, "Фамилия:", _txtLastName);
+        AddRow(1, "Имя:", _txtFirstName);
+        AddRow(2, "Паспорт:", _txtPassport);
+        AddRow(3, "Телефон:", _txtPhone);
 
         var btnSave = new Button { Text = "Сохранить" };
         var btnCancel = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel };
+        UiTheme.StylePrimaryButton(btnSave);
+        UiTheme.StyleSecondaryButton(btnCancel);
         btnSave.Click += (_, _) => Save();
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 45, Padding = new Padding(8) };

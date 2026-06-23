@@ -1,53 +1,43 @@
 using Microsoft.EntityFrameworkCore;
+using Rental.Data.Constants;
 using Rental.Data.Context;
+using Rental.Forms.Ui;
 
 namespace Rental.Forms.Forms;
 
-public class RentalListForm : Form
+public class RentalListForm : ShellForm
 {
     private readonly AppDbContext _db = new();
-    private readonly TextBox _txtSearch = new() { PlaceholderText = "Введите для поиска...", Dock = DockStyle.Top };
-    private readonly DataGridView _grid = new() { Dock = DockStyle.Fill, ReadOnly = true, SelectionMode = DataGridViewSelectionMode.FullRowSelect, AllowUserToAddRows = false, AutoGenerateColumns = false };
-    private readonly Button _btnEdit = new() { Text = "Редактировать", Width = 130, Enabled = false };
-    private readonly Button _btnDelete = new() { Text = "Удалить", Width = 110, Enabled = false };
-    private readonly Button _btnRefresh = new() { Text = "Обновить", Width = 110 };
-    private readonly Label _lblCount = new() { AutoSize = true, Padding = new Padding(8) };
+    private readonly PageHeaderControl _header = new();
+    private readonly FilterTabsControl _filterTabs = new();
+    private readonly CardGridPanel _cardGrid = new();
+    private readonly Label _lblCount = new() { AutoSize = true, ForeColor = UiTheme.TextSecondary, Font = UiTheme.SmallFont, Tag = "secondary" };
     private readonly System.Windows.Forms.Timer _searchTimer = new() { Interval = 300 };
+    private string? _statusFilter;
 
     public RentalListForm()
     {
-        Text = "Аренды";
-        Width = 1100;
-        Height = 550;
-        StartPosition = FormStartPosition.CenterScreen;
+        SetActiveNavKey("rentals");
+        NavigationService.NavigateTo(this, "rentals");
 
-        var dateFormat = new DataGridViewCellStyle { Format = "dd.MM.yyyy HH:mm" };
+        _header.SetTitle("Аренды", "История и текущие аренды");
+        _header.ConfigureAction("Выдать");
+        _filterTabs.SetTabs("Все", RentalRecordStatuses.Active, RentalRecordStatuses.Completed, RentalRecordStatuses.Overdue);
 
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Id", DataPropertyName = "Id", HeaderText = "ID", Width = 50 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "InventoryName", HeaderText = "Инвентарь", Width = 160 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "ClientName", HeaderText = "Клиент", Width = 160 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "IssueDate", HeaderText = "Выдача", Width = 130, DefaultCellStyle = dateFormat });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "PlannedReturnDate", HeaderText = "План возврата", Width = 130, DefaultCellStyle = dateFormat });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "Tariff", HeaderText = "Тариф", Width = 70 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "TotalAmount", HeaderText = "Сумма", Width = 90 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "Fine", HeaderText = "Штраф", Width = 80 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { DataPropertyName = "Status", HeaderText = "Статус", Width = 100 });
+        var footer = new Panel { Dock = DockStyle.Bottom, Height = 28 };
+        footer.Controls.Add(_lblCount);
 
-        var panel = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 45, Padding = new Padding(8) };
-        panel.Controls.AddRange([_btnEdit, _btnDelete, _btnRefresh, _lblCount]);
-        Controls.Add(_grid);
-        Controls.Add(panel);
-        Controls.Add(_txtSearch);
+        ContentPanel.Controls.Add(_cardGrid);
+        ContentPanel.Controls.Add(footer);
+        ContentPanel.Controls.Add(_filterTabs);
+        ContentPanel.Controls.Add(_header);
 
-        DataGridViewSortHelper.Attach(_grid);
+        _header.ActionClicked += (_, _) => NavigationService.NavigateTo(new IssueRentalForm(), "issue");
+        _header.SearchTextChanged += (_, _) => { _searchTimer.Stop(); _searchTimer.Start(); };
+        _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); LoadData(_header.SearchBox.Text); };
+        _filterTabs.FilterChanged += (_, status) => { _statusFilter = status; LoadData(_header.SearchBox.Text); };
 
         Load += (_, _) => LoadData();
-        _txtSearch.TextChanged += (_, _) => { _searchTimer.Stop(); _searchTimer.Start(); };
-        _searchTimer.Tick += (_, _) => { _searchTimer.Stop(); LoadData(_txtSearch.Text); };
-        _grid.SelectionChanged += (_, _) => _btnEdit.Enabled = _btnDelete.Enabled = _grid.CurrentRow != null;
-        _btnEdit.Click += (_, _) => EditSelected();
-        _btnDelete.Click += (_, _) => DeleteSelected();
-        _btnRefresh.Click += (_, _) => LoadData(_txtSearch.Text);
         FormClosed += (_, _) => _db.Dispose();
     }
 
@@ -68,84 +58,57 @@ public class RentalListForm : Form
                 r.Status.Contains(f));
         }
 
-        var items = query
-            .Select(r => new RentalGridRow
-            {
-                Id = r.Id,
-                InventoryName = r.Inventory.Name,
-                ClientName = r.Client.LastName + " " + r.Client.FirstName,
-                IssueDate = r.IssueDate,
-                PlannedReturnDate = r.PlannedReturnDate,
-                Tariff = r.Tariff,
-                TotalAmount = r.TotalAmount,
-                Fine = r.Fine,
-                Status = r.Status
-            })
-            .ToList();
+        if (!string.IsNullOrWhiteSpace(_statusFilter))
+            query = query.Where(r => r.Status == _statusFilter);
 
-        _grid.DataSource = items;
+        var items = query.OrderByDescending(r => r.IssueDate).ToList();
+        _cardGrid.ClearCards();
+
+        foreach (var item in items)
+        {
+            var card = new EntityCardControl();
+            card.Bind(
+                item.Id,
+                item.Inventory.Name,
+                item.Status,
+                item.Inventory.Category,
+                $"Клиент: {item.Client.FullName}\nВыдача: {item.IssueDate:dd.MM.yyyy HH:mm}\nВозврат (план): {item.PlannedReturnDate:dd.MM.yyyy HH:mm}\nТариф: {item.Tariff}  |  Сумма: {item.TotalAmount:N0} ₽  |  Штраф: {item.Fine:N0} ₽");
+            card.PrimaryClicked += (_, id) => EditRecord(id);
+            card.SecondaryClicked += (_, id) => DeleteRecord(id);
+            _cardGrid.AddCard(card);
+        }
+
         _lblCount.Text = $"Записей: {items.Count}";
     }
 
-    private int GetSelectedId()
+    private void EditRecord(int id)
     {
-        if (_grid.CurrentRow?.Cells["Id"].Value is not int id)
-            throw new InvalidOperationException("Не выбрана строка");
-        return id;
+        using var form = new RentalEditForm(id);
+        if (form.ShowDialog() == DialogResult.OK)
+            LoadData(_header.SearchBox.Text);
     }
 
-    private void EditSelected()
+    private void DeleteRecord(int id)
     {
         try
         {
-            using var form = new RentalEditForm(GetSelectedId());
-            if (form.ShowDialog() == DialogResult.OK)
-                LoadData(_txtSearch.Text);
-        }
-        catch (InvalidOperationException ex)
-        {
-            MessageBox.Show(ex.Message, "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-    }
-
-    private void DeleteSelected()
-    {
-        try
-        {
-            var id = GetSelectedId();
             var item = _db.RentalRecords.Include(r => r.Inventory).FirstOrDefault(r => r.Id == id);
             if (item == null) return;
 
-            if (MessageBox.Show($"Удалить аренду №{item.Id}? Это действие нельзя отменить.", "Подтверждение", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+            if (MessageBox.Show($"Удалить аренду №{item.Id}? Это действие нельзя отменить.", "Подтверждение",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
 
-            if (item.Status == Rental.Data.Constants.RentalRecordStatuses.Active)
-                item.Inventory.Status = Rental.Data.Constants.InventoryStatuses.Available;
+            if (item.Status == RentalRecordStatuses.Active)
+                item.Inventory.Status = InventoryStatuses.Available;
 
             _db.RentalRecords.Remove(item);
             _db.SaveChanges();
-            LoadData(_txtSearch.Text);
-        }
-        catch (InvalidOperationException ex)
-        {
-            MessageBox.Show(ex.Message, "Внимание", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            LoadData(_header.SearchBox.Text);
         }
         catch (Exception ex)
         {
             MessageBox.Show("Ошибка при удалении: " + ex.Message, "Ошибка", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-    }
-
-    private sealed class RentalGridRow
-    {
-        public int Id { get; init; }
-        public string InventoryName { get; init; } = string.Empty;
-        public string ClientName { get; init; } = string.Empty;
-        public DateTime IssueDate { get; init; }
-        public DateTime PlannedReturnDate { get; init; }
-        public string Tariff { get; init; } = string.Empty;
-        public decimal TotalAmount { get; init; }
-        public decimal Fine { get; init; }
-        public string Status { get; init; } = string.Empty;
     }
 }

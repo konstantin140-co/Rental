@@ -1,6 +1,7 @@
 using Rental.Data.Constants;
 using Rental.Data.Context;
 using Rental.Data.Models;
+using Rental.Forms.Ui;
 
 namespace Rental.Forms.Forms;
 
@@ -24,7 +25,9 @@ public class InventoryEditForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(420, 360);
+        ClientSize = new Size(440, 380);
+        BackColor = UiTheme.Background;
+        Font = UiTheme.BodyFont;
 
         _cmbStatus.Items.AddRange(InventoryStatuses.All);
         BuildLayout();
@@ -38,9 +41,9 @@ public class InventoryEditForm : Form
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        AddRow(table, 0, "Название:", _txtName);
-        AddRow(table, 1, "Категория:", _txtCategory);
-        AddRow(table, 2, "Инв. номер:", _txtNumber);
+        AddRow(table, 0, "Название:", _txtName, wrapInput: true);
+        AddRow(table, 1, "Категория:", _txtCategory, wrapInput: true);
+        AddRow(table, 2, "Инв. номер:", _txtNumber, wrapInput: true);
         AddRow(table, 3, "Цена/час:", _nudHour);
         AddRow(table, 4, "Цена/сутки:", _nudDay);
         AddRow(table, 5, "Залог:", _nudDeposit);
@@ -49,6 +52,8 @@ public class InventoryEditForm : Form
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 45, Padding = new Padding(8) };
         var btnSave = new Button { Text = "Сохранить", DialogResult = DialogResult.None };
         var btnCancel = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel };
+        UiTheme.StylePrimaryButton(btnSave);
+        UiTheme.StyleSecondaryButton(btnCancel);
         btnSave.Click += (_, _) => Save();
         buttons.Controls.Add(btnCancel);
         buttons.Controls.Add(btnSave);
@@ -59,10 +64,10 @@ public class InventoryEditForm : Form
         CancelButton = btnCancel;
     }
 
-    private static void AddRow(TableLayoutPanel table, int row, string label, Control control)
+    private static void AddRow(TableLayoutPanel table, int row, string label, Control control, bool wrapInput = false)
     {
-        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
-        table.Controls.Add(control, 1, row);
+        table.Controls.Add(new Label { Text = label, AutoSize = true, Anchor = AnchorStyles.Left, ForeColor = UiTheme.TextSecondary, Font = UiTheme.BodyFont }, 0, row);
+        table.Controls.Add(wrapInput && control is TextBox ? UiTheme.WrapInput(control) : control, 1, row);
     }
 
     private void LoadData()

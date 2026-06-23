@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Rental.Data.Constants;
 using Rental.Data.Context;
+using Rental.Forms.Ui;
 
 namespace Rental.Forms.Forms;
 
@@ -25,7 +26,9 @@ public class RentalEditForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(440, 360);
+        ClientSize = new Size(460, 400);
+        BackColor = UiTheme.Background;
+        Font = UiTheme.BodyFont;
 
         _cmbTariff.Items.AddRange(TariffTypes.All);
         _cmbStatus.Items.AddRange(RentalRecordStatuses.All);
@@ -63,6 +66,8 @@ public class RentalEditForm : Form
 
         var btnSave = new Button { Text = "Сохранить" };
         var btnCancel = new Button { Text = "Отмена", DialogResult = DialogResult.Cancel };
+        UiTheme.StylePrimaryButton(btnSave);
+        UiTheme.StyleSecondaryButton(btnCancel);
         btnSave.Click += (_, _) => Save();
 
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, FlowDirection = FlowDirection.RightToLeft, Height = 45, Padding = new Padding(8) };
@@ -75,7 +80,7 @@ public class RentalEditForm : Form
 
     private static void AddRow(TableLayoutPanel table, int row, string label, Control control)
     {
-        table.Controls.Add(new Label { Text = label, AutoSize = true }, 0, row);
+        table.Controls.Add(new Label { Text = label, AutoSize = true, ForeColor = UiTheme.TextSecondary, Font = UiTheme.BodyFont }, 0, row);
         table.Controls.Add(control, 1, row);
     }
 
